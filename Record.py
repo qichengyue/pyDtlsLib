@@ -2,7 +2,7 @@ import random
 import struct
 from enum import Enum
 
-from DTLS import DtlsVersion
+from DTLSVersion import DtlsVersion
 
 
 def random_bytes_generator(n):
@@ -11,6 +11,7 @@ def random_bytes_generator(n):
         result.append(random.randint(1, 255))
 
     return bytes(result)
+
 
 class RecordContentType(Enum):
     Handshake = 0x16
@@ -30,48 +31,85 @@ class HandshakeType(Enum):
 
 
 class Record(object):
-    def __init__(self, content_type, version):
+    def __init__(self, content_type, ctx):
         if isinstance(content_type, RecordContentType):
             raise TypeError('content_type must be a value of "RecordContentType"')
 
         self.content_type = content_type
-        self.version = DtlsVersion.DTLSv1
+        self.ctx = ctx
         self.epoch = 0
         self.sequence_number = 0
         self.length = 0
 
 
 class HandshakeProtocol(Record):
-    def __init__(self, version):
-        super(HandshakeProtocol, self).__init__(RecordContentType.Handshake, version)
+    def __init__(self, ctx):
+        super(HandshakeProtocol, self).__init__(RecordContentType.Handshake, ctx)
 
 
 class ChangeCipherSpecProtocol(Record):
-    def __init__(self, version):
-        super(ChangeCipherSpecProtocol, self).__init__(RecordContentType.ChangeCipherSpec, version)
+    def __init__(self, ctx):
+        super(ChangeCipherSpecProtocol, self).__init__(RecordContentType.ChangeCipherSpec, ctx)
 
 
 class ApplicationDataProtocol(Record):
-    def __init__(self, version):
-        super(ApplicationDataProtocol, self).__init__(RecordContentType.ApplicationData, version)
+    def __init__(self, ctx):
+        super(ApplicationDataProtocol, self).__init__(RecordContentType.ApplicationData, ctx)
 
 
 class ClientHello(HandshakeProtocol):
-    def __init__(self, version):
-        super(ClientHello, self).__init__(version)
+    def __init__(self, ctx):
+        super(ClientHello, self).__init__(ctx)
 
         self.payload = bytearray()
-        self.payload.append(HandshakeType.ClientHello.value)
+
+        self.payload.append(HandshakeType.ClientHello.value)    # 1 bytes handshake type
         self.payload.extend(b'\x00\x00\x00')    # 3 bytes length, fill up later
         self.payload.extend(b'\x00\x00')        # 2 bytes message sequence, fill up later
         self.payload.extend(b'\x00\x00\x00')    # 3 bytes fragment offset, fill up later
-        self.payload.extend(b'\x00\x00\x00')    # 3 bytes fragment length, fill up later
-        self.payload.extend(struct.pack('>H', self.version.value))  # 2 bytes DTLS version
-        self.payload.extend(random_bytes_generator(32))                # 32 random bytes
+        self.payload.extend(b'\x00\x00\x00')    # 3 bytes fragment length(= payload length - 12), fill up later
+        self.payload.extend(struct.pack('>H', self.ctx.get_dtls_version().value))  # 2 bytes DTLS version
+        self.payload.extend(random_bytes_generator(32))             # 32 random bytes
         self.payload.extend(b'\x00')            # 1 bytes session id length
         self.payload.extend(b'\x00')            # 1 bytes cookie length
         self.payload.extend(b'\x00\x00')        # 2 bytes cipher suite length
-        self.payload.extend(b'All Cipher Suite')        # list all supported cipher suite
+        cipher_suite_bytes = self.ctx.get_cipher_suites_bytes()
+        self.payload.extend(cipher_suite_bytes)        # all supported cipher suite
+
+        extension = [
+            0x00, 0x0b,     # Type: ec_point_formats_type(11)
+            0x00, 0x04,     # length = 4
+            0x03,           # EC point formats length = 3
+            0x00, 0x01, 0x02,   # Elliptic curves point formats
+
+            0x00, 0x0a,     # Type: supported groups
+            0x00, 0x1c,     # length = 28
+            0x00, 0x1a,     # Supported group list length
+            0x00, 0x17, 0x00, 0x19, 0x00, 0x1c, 0x00, 0x1b,
+            0x00, 0x18, 0x00, 0x1a, 0x00, 0x16, 0x00, 0x0e,
+            0x00, 0x0d, 0x00, 0x0b, 0x00, 0x0c, 0x00, 0x09,
+            0x00, 0x0a,
+
+            0x00, 0x23,     # Type: SessionTicket TLS
+            0x00, 0x00,     # length 0
+
+            0x00, 0x0f,     # Type: heartbeat
+            0x00, 0x01,     # Length 1
+            0x01,           # Peer allowed to send requests
+        ]
+
+        self.payload.extend(extension)
+        self.payload[48:50] = struct.pack('>H', len(cipher_suite_bytes))  # fill up cipher suite length
+        total_payload_length = len(self.payload)
+        # Convert length to 3 bytes..
+        self.payload[9:12] = struct.pack('>BH', total_payload_length >> 16, total_payload_length & 0x00fff)
+        self.payload[1:4] = self.payload[9:12]  # fill up client hello part total length
+
+    def get_payload_bytes(self):
+        return bytes(self.payload)
+
+
+
 
 
 
