@@ -1,2 +1,12 @@
-# pyDtlsLib
-A python dtls library based on python socket, not rely on OpenSSL
+								Record
+				
+			HandshakeProtocol			ChangeCipherSpec			ApplicationDataProtocol
+			
+			ClientHello
+			HelloVerifyRequest
+			ServerHello
+			Certificate
+			ServerKeyExchange
+			ServerHelloDone
+			ClientKeyExchange
+			NewSessionTicket
