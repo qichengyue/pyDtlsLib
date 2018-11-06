@@ -32,14 +32,26 @@ class HandshakeType(Enum):
 
 class Record(object):
     def __init__(self, content_type, ctx):
-        if isinstance(content_type, RecordContentType):
+        if not isinstance(content_type, RecordContentType):
             raise TypeError('content_type must be a value of "RecordContentType"')
 
-        self.content_type = content_type
         self.ctx = ctx
+        self.content_type = content_type
+        self.version = ctx.version
         self.epoch = 0
         self.sequence_number = 0
         self.length = 0
+
+    def get_record_bytes(self):
+        ba = bytearray()
+        ba.extend(struct.pack('>B', self.content_type.value))   # 1 byte content type
+        ba.extend(struct.pack('>H', self.version.value))        # 2 bytes dtls version
+        ba.extend(struct.pack('>H', self.epoch))                # 2 bytes epoch
+        # 6 bytes sequence_number..
+        ba.extend(struct.pack('>HI', self.sequence_number >> 32, self.sequence_number & 0x0000ffffffff))
+        ba.extend(b'\x00\x00')     # the length is the whole left packet, to be filled up
+        return bytes(ba)
+
 
 
 class HandshakeProtocol(Record):
@@ -59,7 +71,7 @@ class ApplicationDataProtocol(Record):
 
 class ClientHello(HandshakeProtocol):
     def __init__(self, ctx):
-        super(ClientHello, self).__init__(ctx)
+        HandshakeProtocol.__init__(self, ctx)
 
         self.payload = bytearray()
 
@@ -75,6 +87,8 @@ class ClientHello(HandshakeProtocol):
         self.payload.extend(b'\x00\x00')        # 2 bytes cipher suite length
         cipher_suite_bytes = self.ctx.get_cipher_suites_bytes()
         self.payload.extend(cipher_suite_bytes)        # all supported cipher suite
+        self.payload.extend(ctx.compression_methods_length)     # 1 bytes compression length
+        self.payload.extend(ctx.compression_methods)
 
         extension = [
             0x00, 0x0b,     # Type: ec_point_formats_type(11)
@@ -98,11 +112,13 @@ class ClientHello(HandshakeProtocol):
             0x01,           # Peer allowed to send requests
         ]
 
+        self.payload.extend(struct.pack('>H', len(extension)))  # fill up 2 bytes extension length
         self.payload.extend(extension)
         self.payload[48:50] = struct.pack('>H', len(cipher_suite_bytes))  # fill up cipher suite length
         total_payload_length = len(self.payload)
-        # Convert length to 3 bytes..
-        self.payload[9:12] = struct.pack('>BH', total_payload_length >> 16, total_payload_length & 0x00fff)
+        fragment_length = total_payload_length - 12
+        # Convert length to 3 bytes, fragment length = total_payload_length - 12
+        self.payload[9:12] = struct.pack('>BH', fragment_length >> 16, fragment_length & 0x00ffff)
         self.payload[1:4] = self.payload[9:12]  # fill up client hello part total length
 
     def get_payload_bytes(self):

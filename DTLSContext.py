@@ -11,6 +11,7 @@ class DTLSContext(object):
         self.version = version
         self.cipher_suites = bytearray()
         self.load_all_cipher_suites()
+        self.compression_methods_length = b'\x01'  # 0x01
         self.compression_methods = b'\x00'
 
     def load_all_cipher_suites(self):
@@ -30,5 +31,5 @@ class DTLSContext(object):
     def get_compression_methods(self):
         return self.compression_methods
 
-    def get_cihper_suite_bytes(self):
+    def get_cipher_suites_bytes(self):
         return bytes(self.cipher_suites)
