@@ -20,4 +20,5 @@ class DTLSConnection(object):
         ba[-2:] = struct.pack('>H', len(client_hello.get_payload_bytes()))  # fill up length segment
         ba.extend(client_hello.get_payload_bytes())
         self._socket.sendto(bytes(ba), (self.ip, self.port))
+        
 
