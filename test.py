@@ -5,7 +5,7 @@ from DTLSContext import DTLSContext
 from DtlsConnection import DTLSConnection
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-ip = '172.22.134.1'
+ip = '192.168.199.200'
 port = 4567
 
 ctx = DTLSContext(DtlsVersion.DTLSv1)
