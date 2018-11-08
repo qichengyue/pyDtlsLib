@@ -53,7 +53,6 @@ class Record(object):
         return bytes(ba)
 
 
-
 class HandshakeProtocol(Record):
     def __init__(self, ctx):
         super(HandshakeProtocol, self).__init__(RecordContentType.Handshake, ctx)
@@ -70,7 +69,7 @@ class ApplicationDataProtocol(Record):
 
 
 class ClientHello(HandshakeProtocol):
-    def __init__(self, ctx):
+    def __init__(self, ctx, **args):
         HandshakeProtocol.__init__(self, ctx)
 
         self.payload = bytearray()
@@ -82,8 +81,13 @@ class ClientHello(HandshakeProtocol):
         self.payload.extend(b'\x00\x00\x00')    # 3 bytes fragment length(= payload length - 12), fill up later
         self.payload.extend(struct.pack('>H', self.ctx.get_dtls_version().value))  # 2 bytes DTLS version
         self.payload.extend(random_bytes_generator(32))             # 32 random bytes
-        self.payload.extend(b'\x00')            # 1 bytes session id length
-        self.payload.extend(b'\x00')            # 1 bytes cookie length
+        self.payload.extend(b'\x00')            # 1 byte session id length
+        if 'cookie' in args:
+            cookie = args['cookie']
+            self.payload.extend(struct.pack('>B', len(cookie)))     # 1 byte cookie length
+            self.payload.extend(cookie)
+        else:
+            self.payload.extend(b'\x00')            # 1 byte cookie length
         self.payload.extend(b'\x00\x00')        # 2 bytes cipher suite length
         cipher_suite_bytes = self.ctx.get_cipher_suites_bytes()
         self.payload.extend(cipher_suite_bytes)        # all supported cipher suite
