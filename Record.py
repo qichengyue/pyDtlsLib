@@ -31,7 +31,7 @@ class HandshakeType(Enum):
 
 
 class Record(object):
-    def __init__(self, content_type, ctx):
+    def __init__(self, content_type, ctx, **args):
         if not isinstance(content_type, RecordContentType):
             raise TypeError('content_type must be a value of "RecordContentType"')
 
@@ -39,7 +39,10 @@ class Record(object):
         self.content_type = content_type
         self.version = ctx.version
         self.epoch = 0
-        self.sequence_number = 0
+        if 'message_sequence' in args:
+            self.sequence_number = args['message_sequence']
+        else:
+            self.sequence_number = 0
         self.length = 0
 
     def get_record_bytes(self):
@@ -54,8 +57,8 @@ class Record(object):
 
 
 class HandshakeProtocol(Record):
-    def __init__(self, ctx):
-        super(HandshakeProtocol, self).__init__(RecordContentType.Handshake, ctx)
+    def __init__(self, ctx, **args):
+        super(HandshakeProtocol, self).__init__(RecordContentType.Handshake, ctx, **args)
 
 
 class ChangeCipherSpecProtocol(Record):
@@ -70,22 +73,26 @@ class ApplicationDataProtocol(Record):
 
 class ClientHello(HandshakeProtocol):
     def __init__(self, ctx, **args):
-        HandshakeProtocol.__init__(self, ctx)
+        HandshakeProtocol.__init__(self, ctx, **args)
 
         self.payload = bytearray()
+        self.cookie = b''
 
         self.payload.append(HandshakeType.ClientHello.value)    # 1 bytes handshake type
         self.payload.extend(b'\x00\x00\x00')    # 3 bytes length, fill up later
-        self.payload.extend(b'\x00\x00')        # 2 bytes message sequence, fill up later
+        if 'message_sequence' in args:
+            self.payload.extend(struct.pack('>H', args['message_sequence']))
+        else:
+            self.payload.extend(b'\x00\x00')        # 2 bytes message sequence, fill up later
         self.payload.extend(b'\x00\x00\x00')    # 3 bytes fragment offset, fill up later
         self.payload.extend(b'\x00\x00\x00')    # 3 bytes fragment length(= payload length - 12), fill up later
         self.payload.extend(struct.pack('>H', self.ctx.get_dtls_version().value))  # 2 bytes DTLS version
         self.payload.extend(random_bytes_generator(32))             # 32 random bytes
         self.payload.extend(b'\x00')            # 1 byte session id length
         if 'cookie' in args:
-            cookie = args['cookie']
-            self.payload.extend(struct.pack('>B', len(cookie)))     # 1 byte cookie length
-            self.payload.extend(cookie)
+            self.cookie = args['cookie']
+            self.payload.extend(struct.pack('>B', len(self.cookie)))     # 1 byte cookie length
+            self.payload.extend(self.cookie)
         else:
             self.payload.extend(b'\x00')            # 1 byte cookie length
         self.payload.extend(b'\x00\x00')        # 2 bytes cipher suite length
@@ -118,7 +125,7 @@ class ClientHello(HandshakeProtocol):
 
         self.payload.extend(struct.pack('>H', len(extension)))  # fill up 2 bytes extension length
         self.payload.extend(extension)
-        self.payload[48:50] = struct.pack('>H', len(cipher_suite_bytes))  # fill up cipher suite length
+        self.payload[48+len(self.cookie):50+len(self.cookie)] = struct.pack('>H', len(cipher_suite_bytes))  # fill up cipher suite length
         total_payload_length = len(self.payload)
         fragment_length = total_payload_length - 12
         # Convert length to 3 bytes, fragment length = total_payload_length - 12
