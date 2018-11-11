@@ -1,6 +1,6 @@
 import struct
 
-from CipherSuitess import CipherSuites
+from CipherSuites import CipherSuites
 from DTLSVersion import DtlsVersion
 
 

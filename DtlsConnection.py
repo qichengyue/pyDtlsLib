@@ -1,6 +1,7 @@
 import struct
 from socket import socket
 
+from CipherSuites import CipherSuites
 from Record import ClientHello, RecordContentType, HandshakeType
 
 
@@ -53,6 +54,16 @@ class DTLSConnection(object):
                 ba[-2:] = struct.pack('>H', len(client_hello.get_payload_bytes()))  # fill up length segment
                 ba.extend(client_hello.get_payload_bytes())
                 self._socket.sendto(bytes(ba), (self.ip, self.port))
+                server_hello = self._socket.recv(1024)
+                assert server_hello[0] == 0x16
+                assert server_hello[1:3] == b'\xfe\xff'     # support DTLSv1 only
+                assert server_hello[13] == 0x02
+                cipher_suite = CipherSuites(struct.unpack('>H', server_hello[60:62])[0])
+                state = 'Certificate'
+
+            if state == 'Certificate':
+                
+
 
 
 
