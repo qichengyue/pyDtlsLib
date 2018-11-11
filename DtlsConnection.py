@@ -62,7 +62,7 @@ class DTLSConnection(object):
                 state = 'Certificate'
 
             if state == 'Certificate':
-                
+
 
 
 
