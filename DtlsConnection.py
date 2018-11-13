@@ -62,40 +62,58 @@ class DTLSConnection(object):
                 state = 'Certificate'
 
             if state == 'Certificate':
-                is_certificate_complete = False
                 resp = self._socket.recv(1500)
                 assert resp[0] == 0x16
                 assert resp[13] == HandshakeType.Certificate.value
                 certificate_length = (struct.unpack('>BH', resp[14:17])[0] << 16) + struct.unpack('>BH', resp[14:17])[1]
-                temp_length = 0     # already finished part length of the certificate
                 certificate = bytearray(certificate_length)
-                print('Certificate length resp:%s' % certificate_length)
                 fragment_length = (struct.unpack('>BH', resp[22:25])[0] << 16) + struct.unpack('>BH', resp[22:25])[1]
                 if fragment_length == certificate_length:
-                    is_certificate_complete = True
                     certificate[0:] = resp[25:fragment_length]
                 else:
                     offset = (struct.unpack('>BH', resp[19:22])[0] << 16) + struct.unpack('>BH', resp[19:22])[1]
-                    certificate[offset:fragment_length] = resp[25:fragment_length]
+                    certificate[offset:offset+fragment_length] = resp[25:25+fragment_length]
+                    # According to the fragment length and total length,
+                    # calculate the fragment number and reassembled the certificate
+                    n = certificate_length // fragment_length + (1 if certificate_length % fragment_length else 0)
+                    for i in range(n-1):
+                        resp = self._socket.recv(1500)
+                        assert resp[0] == 0x16
+                        assert resp[13] == HandshakeType.Certificate.value
+                        fragment_length = (struct.unpack('>BH', resp[22:25])[0] << 16) + \
+                                          struct.unpack('>BH', resp[22:25])[1]
+                        offset = (struct.unpack('>BH', resp[19:22])[0] << 16) + struct.unpack('>BH', resp[19:22])[1]
+                        certificate[offset:offset+fragment_length] = resp[25:25+fragment_length]
 
-                temp_length += fragment_length
-
-                while not is_certificate_complete:
-                    resp = self._socket.recv(1500)
-                    assert resp[0] == 0x16
-                    assert resp[13] == HandshakeType.Certificate.value
-                    fragment_length = (struct.unpack('>BH', resp[22:25])[0] << 16) + struct.unpack('>BH', resp[22:25])[1]
-                    temp_length += fragment_length
-                    if temp_length == certificate_length:
-                        is_certificate_complete = True
-                    offset = (struct.unpack('>BH', resp[19:22])[0] << 16) + struct.unpack('>BH', resp[19:22])[1]
-                    certificate[offset:fragment_length] = resp[25:fragment_length]
 
                 state = 'ServerKeyExchange'
-                print('Certificate length: %s' % len(certificate))
-                print(b'Certificate: %s' % certificate)
 
+            if state == 'ServerKeyExchange':
+                resp = self._socket.recv(1500)
+                assert resp[0] == 0x16
+                assert resp[13] == HandshakeType.ServerKeyExchange.value
+                key_length = (struct.unpack('>BH', resp[14:17])[0] << 16) + struct.unpack('>BH', resp[14:17])[1]
+                key = bytearray(key_length)
+                fragment_length = (struct.unpack('>BH', resp[22:25])[0] << 16) + struct.unpack('>BH', resp[22:25])[1]
+                if fragment_length == key_length:
+                    key[0:] = resp[25:fragment_length]
+                else:
+                    offset = (struct.unpack('>BH', resp[19:22])[0] << 16) + struct.unpack('>BH', resp[19:22])[1]
+                    key[offset:offset+fragment_length] = resp[25:25+fragment_length]
+                    # According to the fragment length and total length,
+                    # calculate the fragment number and reassembled the key
+                    n = key_length // fragment_length + (1 if key_length % fragment_length else 0)
+                    for i in range(n-1):
+                        resp = self._socket.recv(1500)
+                        assert resp[0] == 0x16
+                        assert resp[13] == HandshakeType.ServerKeyExchange.value
+                        fragment_length = (struct.unpack('>BH', resp[22:25])[0] << 16) + \
+                                          struct.unpack('>BH', resp[22:25])[1]
+                        offset = (struct.unpack('>BH', resp[19:22])[0] << 16) + struct.unpack('>BH', resp[19:22])[1]
+                        key[offset:offset+fragment_length] = resp[25:25+fragment_length]
 
+                print('Key length:%s' % len(key))
+                print(b'key:%s' % key)
 
 
 
